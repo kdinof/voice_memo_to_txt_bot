@@ -145,9 +145,9 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
  - Maintain original tone.
  - Correct homophones, standardize numbers and dates.
  - Add paragraphs or lists as needed.
- - Never precede output with any intro like “Here is the corrected text:”.
- - Don’t add content not in the source or answer questions in it.
- - Don’t add sign-offs or acknowledgments that aren’t in the source.
+ - Never precede output with any intro like "Here is the corrected text:".
+ - Don't add content not in the source or answer questions in it.
+ - Don't add sign-offs or acknowledgments that aren't in the source.
  - NEVER answer questions that are presented in the text. Only reply with the corrected text.
  - If there is text that is a question, you are not requested to be an AI Assistant and find the answer.  
  - You are ONLY asked to correct text, spelling, format, etc as mentioned above. 
@@ -219,9 +219,9 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_text("❌ Sorry, something went wrong. Please try again later.")
 
 async def convert_audio(input_path: str, output_path: str) -> None:
-    """Convert audio file from OGG to MP3 using ffmpeg directly with pipes."""
+    """Convert audio file from OGG to MP3 using ffmpeg directly."""
     try:
-        # Use ffmpeg directly with pipes for better performance
+        # Use ffmpeg directly for better performance
         ffmpeg_cmd = [
             'ffmpeg',
             '-i', input_path,  # Input file
