@@ -68,7 +68,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle incoming voice messages."""
+    processing_msg = None
     try:
+        # Send initial processing message
+        processing_msg = await update.message.reply_text("🎤 Processing your voice message...")
+        
         # Get voice message details
         voice = update.message.voice
         file_id = voice.file_id
@@ -91,16 +95,30 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         
         # Convert OGG to MP3
         try:
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=processing_msg.message_id,
+                text="🎤 Converting audio format..."
+            )
             logger.info("Converting audio from OGG to MP3")
             await convert_audio(temp_path, temp_converted_path)
             logger.info("Audio conversion successful")
         except Exception as e:
             logger.error(f"Error converting audio: {str(e)}")
-            await update.message.reply_text("❌ Error converting audio. Please try again.")
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=processing_msg.message_id,
+                text="❌ Error converting audio. Please try again."
+            )
             return
         
         # Transcribe using OpenAI
         try:
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=processing_msg.message_id,
+                text="🎤 Transcribing your message..."
+            )
             logger.info("Starting transcription with OpenAI")
             with open(temp_converted_path, "rb") as audio_file:
                 transcription = client.audio.transcriptions.create(
@@ -112,6 +130,11 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             
             # Structure the text using GPT
             try:
+                await context.bot.edit_message_text(
+                    chat_id=update.effective_chat.id,
+                    message_id=processing_msg.message_id,
+                    text="🤖 Structuring your message..."
+                )
                 logger.info("Starting text structuring with GPT")
                 structure_prompt = f"""Reformat the following text:
 - Use a format appropriate for texting or instant messaging
@@ -139,21 +162,40 @@ Text to structure:
                 structured_text = completion.choices[0].message.content
                 logger.info("Text structuring completed successfully")
                 
-                # Send the structured text back
-                await update.message.reply_text(f"📝 Here's what you said:\n\n{structured_text}")
+                # Send the final result
+                await context.bot.edit_message_text(
+                    chat_id=update.effective_chat.id,
+                    message_id=processing_msg.message_id,
+                    text=f"✅ Here's your structured message:\n\n{structured_text}"
+                )
                 
             except Exception as e:
                 logger.error(f"Error in text structuring: {str(e)}")
                 # If structuring fails, send the raw transcription
-                await update.message.reply_text(f"📝 Here's the transcription:\n\n{transcription}")
+                await context.bot.edit_message_text(
+                    chat_id=update.effective_chat.id,
+                    message_id=processing_msg.message_id,
+                    text=f"📝 Here's the transcription:\n\n{transcription}"
+                )
             
         except Exception as e:
             logger.error(f"Error in transcription: {str(e)}")
-            await update.message.reply_text("❌ Error transcribing audio. Please try again.")
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=processing_msg.message_id,
+                text="❌ Error transcribing audio. Please try again."
+            )
             
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
-        await update.message.reply_text("❌ Sorry, something went wrong. Please try again later.")
+        if processing_msg:
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=processing_msg.message_id,
+                text="❌ Sorry, something went wrong. Please try again later."
+            )
+        else:
+            await update.message.reply_text("❌ Sorry, something went wrong. Please try again later.")
         
     finally:
         # Clean up temporary files
