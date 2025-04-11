@@ -140,7 +140,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 - Use a format appropriate for texting or instant messaging
 - Fix grammar, spelling, and punctuation
 - Remove speech artifacts (um, uh, false starts, repetitions)
-- Maintain original tone
+- Maintain original tone and language (do not translate from Russian to English)
 - Correct homophones, standardize numbers and dates
 - Add paragraphs or lists as needed
 - Never precede output with any intro like "Here is the corrected text:"
