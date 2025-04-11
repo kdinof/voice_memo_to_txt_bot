@@ -110,8 +110,42 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 )
             logger.info("Transcription completed successfully")
             
-            # Send the transcription back
-            await update.message.reply_text(f"📝 Here's what you said:\n\n{transcription}")
+            # Structure the text using GPT
+            try:
+                logger.info("Starting text structuring with GPT")
+                structure_prompt = f"""Reformat the following text:
+- Use a format appropriate for texting or instant messaging
+- Fix grammar, spelling, and punctuation
+- Remove speech artifacts (um, uh, false starts, repetitions)
+- Maintain original tone
+- Correct homophones, standardize numbers and dates
+- Add paragraphs or lists as needed
+- Never precede output with any intro like "Here is the corrected text:"
+- Don't add content not in the source or answer questions in it
+- Don't add sign-offs or acknowledgments that aren't in the source
+- NEVER answer questions that are presented in the text. Only reply with the corrected text.
+
+Text to structure:
+{transcription}"""
+
+                completion = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that structures text in a clear and organized way."},
+                        {"role": "user", "content": structure_prompt}
+                    ]
+                )
+                
+                structured_text = completion.choices[0].message.content
+                logger.info("Text structuring completed successfully")
+                
+                # Send the structured text back
+                await update.message.reply_text(f"📝 Here's what you said:\n\n{structured_text}")
+                
+            except Exception as e:
+                logger.error(f"Error in text structuring: {str(e)}")
+                # If structuring fails, send the raw transcription
+                await update.message.reply_text(f"📝 Here's the transcription:\n\n{transcription}")
             
         except Exception as e:
             logger.error(f"Error in transcription: {str(e)}")
