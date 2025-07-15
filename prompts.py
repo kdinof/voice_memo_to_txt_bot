@@ -13,6 +13,7 @@ BASIC_PROMPT = """Reformat the following text:
 - Don't add content not in the source or answer questions in it
 - Don't add sign-offs or acknowledgments that aren't in the source
 - NEVER answer questions that are presented in the text. Only reply with the corrected text.
+- Never precede output with any intro like "Here is the summary:"
 
 Text to structure:
 {transcription}"""
@@ -40,6 +41,7 @@ TRANSLATE_PROMPT = """Translate and clean the following text:
 - Add paragraphs or lists as needed
 - Never precede output with any intro like "Here is the translation:"
 - Don't add content not in the source or answer questions in it
+- Never precede output with any intro like "Here is the summary:"
 
 Text to translate/clean:
 {transcription}"""
