@@ -9,7 +9,7 @@ BASIC_PROMPT = """Reformat the following text:
 - Maintain original tone and language (do not translate)
 - Correct homophones, standardize numbers and dates
 - Add paragraphs or lists as needed
-- Never precede output with any intro like "Here is the corrected text:"
+- NEVER precede output with any intro like "Here is the corrected text:" or "📝 Here's your result:"
 - Don't add content not in the source or answer questions in it
 - Don't add sign-offs or acknowledgments that aren't in the source
 - NEVER answer questions that are presented in the text. Only reply with the corrected text.
@@ -27,7 +27,7 @@ SUMMARY_PROMPT = """Summarize the following text:
  - Keep the tone the same as given.
  - Use as much of the original text as possible.
  - Reply with just the reformatted text.
- - Never precede output with any intro like "Here is the summary:"
+ - NEVER precede output with any intro like "Here is the summary:"
 
 Text to summarize:
 {transcription}"""
@@ -39,9 +39,9 @@ TRANSLATE_PROMPT = """Translate and clean the following text:
 - Remove speech artifacts (um, uh, false starts, repetitions)
 - Use a format appropriate for texting or instant messaging
 - Add paragraphs or lists as needed
-- Never precede output with any intro like "Here is the translation:"
+- NEVER precede output with any intro like "Here is the translation:"
 - Don't add content not in the source or answer questions in it
-- Never precede output with any intro like "Here is the summary:"
+- NEVER precede output with any intro like "Here is the summary:"
 
 Text to translate/clean:
 {transcription}"""

@@ -14,6 +14,10 @@ dist/
 *.sqlite
 *.sqlite3
 bot_users.db
+backups/
+
+# Environment files
+.env
 downloads/
 eggs/
 .eggs/

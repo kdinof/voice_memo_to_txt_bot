@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 # Dictionary to store voice file data temporarily
 voice_files_cache = {}
 
+
 # Initialize OpenAI client
 try:
     openai_api_key = os.getenv('OPENAI_API_KEY')
@@ -153,6 +154,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             'timestamp': asyncio.get_event_loop().time()
         }
         
+        
         # Create inline keyboard with transcription options
         keyboard = [
             [InlineKeyboardButton("📝 Basic Transcription", callback_data=f"transcribe_basic_{cache_key}")],
@@ -248,6 +250,9 @@ async def handle_transcription_callback(update: Update, context: ContextTypes.DE
     await query.answer()
     
     try:
+        # Get user ID first
+        user_id = query.from_user.id
+        
         # Parse callback data
         callback_data = query.data
         parts = callback_data.split('_', 2)
@@ -264,7 +269,6 @@ async def handle_transcription_callback(update: Update, context: ContextTypes.DE
         
         voice_data = voice_files_cache[cache_key]
         temp_converted_path = voice_data['temp_converted_path']
-        temp_path = voice_data['temp_path']
         duration = voice_data['duration']
         
         # Check file exists
@@ -284,13 +288,10 @@ async def handle_transcription_callback(update: Update, context: ContextTypes.DE
         # Process transcription
         result = await process_transcription(transcription_type, temp_converted_path, duration)
         
-        # Send final result
-        emoji_map = {"basic": "📝", "summary": "📋", "translate": "🌐"}
-        emoji = emoji_map.get(transcription_type, "✅")
-        await query.edit_message_text(f"{emoji} Here's your result:\n\n{result}")
+        # Send final result as code block for easy copying
+        await query.edit_message_text(f"```\n{result}\n```", parse_mode='Markdown')
         
         # Track usage after successful transcription
-        user_id = query.from_user.id
         add_usage(user_id, duration)
         
         logger.info(f"Successfully processed {transcription_type} transcription for cache_key: {cache_key}")
@@ -313,6 +314,8 @@ async def handle_transcription_callback(update: Update, context: ContextTypes.DE
                 logger.info(f"Cleaned up files for cache_key: {cache_key}")
             except Exception as cleanup_error:
                 logger.error(f"Error cleaning up cached files: {str(cleanup_error)}")
+
+
 
 async def usage_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show user's usage statistics."""

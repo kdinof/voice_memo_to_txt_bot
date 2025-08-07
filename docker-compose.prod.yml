@@ -9,11 +9,17 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - ADMIN_USER_ID=${ADMIN_USER_ID}
+      - DATABASE_DIR=/home/app/data
+      - NODE_ENV=production
     volumes:
       # Database persistence - use named volume for production
       - bot_data_prod:/home/app/data
     env_file:
       - .env
+    # Add labels for easier management
+    labels:
+      - "com.voice-memo-bot.service=production"
+      - "com.voice-memo-bot.version=latest"
     logging:
       driver: "json-file"
       options:
@@ -28,13 +34,13 @@ services:
         reservations:
           memory: 256M
           cpus: '0.25'
-    # Health check configuration
+    # Health check configuration - enhanced
     healthcheck:
-      test: ["CMD", "python", "-c", "import sqlite3; conn = sqlite3.connect('/home/app/data/bot_users.db'); conn.close()"]
+      test: ["CMD-SHELL", "python -c \"import sqlite3, os; conn = sqlite3.connect('/home/app/data/bot_users.db'); cursor = conn.cursor(); cursor.execute('SELECT 1'); conn.close(); print('DB OK')\" || exit 1"]
       interval: 30s
-      timeout: 10s
+      timeout: 15s
       retries: 3
-      start_period: 40s
+      start_period: 60s
     # Security options
     security_opt:
       - no-new-privileges:true
@@ -42,7 +48,21 @@ services:
     tmpfs:
       - /tmp
       - /home/app/.cache
+    # Network configuration for isolation
+    networks:
+      - bot_network
+
+# Network configuration
+networks:
+  bot_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
 
 volumes:
   bot_data_prod:
     driver: local
+    labels:
+      - "com.voice-memo-bot.volume=database"
+      - "com.voice-memo-bot.backup=enabled"
