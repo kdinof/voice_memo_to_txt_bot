@@ -11,6 +11,7 @@ import ffmpeg
 import json
 import asyncio
 from prompts import BASIC_PROMPT, SUMMARY_PROMPT, TRANSLATE_PROMPT, SYSTEM_PROMPTS, MODEL_CONFIG
+from database import init_database, can_process_voice, add_usage, get_user_stats, set_pro_status
 
 # Load environment variables
 load_dotenv()
@@ -69,7 +70,22 @@ async def convert_audio(input_path: str, output_path: str) -> None:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /start is issued."""
-    await update.message.reply_text('👋 Hi! Send me a voice message and I\'ll convert it to text!')
+    user_id = update.effective_user.id
+    is_pro, daily_usage, _ = get_user_stats(user_id)
+    
+    message = "👋 Hi! Send me a voice message and I'll convert it to text!\n\n"
+    
+    if is_pro:
+        message += "✨ **PRO User** - Unlimited transcription!\n"
+    else:
+        remaining_seconds = max(0, 300 - daily_usage)
+        remaining_minutes = remaining_seconds // 60
+        remaining_secs = remaining_seconds % 60
+        message += f"📊 Daily limit: 5 minutes (you have {remaining_minutes}m {remaining_secs}s remaining today)\n"
+    
+    message += "\nCommands:\n/usage - Check your usage statistics\n"
+    
+    await update.message.reply_text(message, parse_mode='Markdown')
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle incoming voice messages by showing transcription options."""
@@ -85,6 +101,16 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         user_id = update.effective_user.id
         
         logger.info(f"Received voice message. File ID: {file_id}, Duration: {duration}s, User: {user_id}")
+        
+        # Check if user can process this voice message
+        can_process, reason = can_process_voice(user_id, duration)
+        if not can_process:
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=processing_msg.message_id,
+                text=f"❌ {reason}"
+            )
+            return
         
         # Create temporary files
         with tempfile.NamedTemporaryFile(suffix='.ogg', delete=False) as temp_ogg, \
@@ -263,7 +289,12 @@ async def handle_transcription_callback(update: Update, context: ContextTypes.DE
         emoji = emoji_map.get(transcription_type, "✅")
         await query.edit_message_text(f"{emoji} Here's your result:\n\n{result}")
         
+        # Track usage after successful transcription
+        user_id = query.from_user.id
+        add_usage(user_id, duration)
+        
         logger.info(f"Successfully processed {transcription_type} transcription for cache_key: {cache_key}")
+        logger.info(f"Added {duration} seconds of usage for user {user_id}")
         
     except Exception as e:
         logger.error(f"Error in callback handler: {str(e)}")
@@ -283,13 +314,79 @@ async def handle_transcription_callback(update: Update, context: ContextTypes.DE
             except Exception as cleanup_error:
                 logger.error(f"Error cleaning up cached files: {str(cleanup_error)}")
 
+async def usage_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show user's usage statistics."""
+    user_id = update.effective_user.id
+    is_pro, daily_usage, total_usage = get_user_stats(user_id)
+    
+    status = "PRO ✨" if is_pro else "Regular"
+    daily_minutes = daily_usage // 60
+    daily_seconds = daily_usage % 60
+    total_minutes = total_usage // 60
+    remaining_seconds = max(0, 300 - daily_usage) if not is_pro else float('inf')
+    
+    message = f"📊 **Your Usage Stats**\n\n"
+    message += f"Status: {status}\n"
+    message += f"Today: {daily_minutes}m {daily_seconds}s used\n"
+    message += f"Total: {total_minutes}m used\n"
+    
+    if not is_pro:
+        if remaining_seconds == float('inf'):
+            message += f"Remaining: Unlimited"
+        elif remaining_seconds > 0:
+            rem_min = int(remaining_seconds) // 60
+            rem_sec = int(remaining_seconds) % 60
+            message += f"Remaining today: {rem_min}m {rem_sec}s"
+        else:
+            message += f"Daily limit reached (5 minutes)"
+    else:
+        message += f"Remaining: Unlimited ✨"
+    
+    await update.message.reply_text(message, parse_mode='Markdown')
+
+async def setpro_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Admin command to set PRO status for users."""
+    admin_id = os.getenv('ADMIN_USER_ID')
+    if not admin_id or str(update.effective_user.id) != admin_id:
+        await update.message.reply_text("❌ Admin access required.")
+        return
+    
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text(
+            "Usage: /setpro <user_id> <true/false>\n"
+            "Example: /setpro 123456789 true"
+        )
+        return
+    
+    try:
+        target_user_id = int(context.args[0])
+        is_pro = context.args[1].lower() in ['true', '1', 'yes', 'on']
+        
+        success = set_pro_status(target_user_id, is_pro)
+        if success:
+            status = "PRO ✨" if is_pro else "Regular"
+            await update.message.reply_text(f"✅ User {target_user_id} set to {status} status")
+        else:
+            await update.message.reply_text("❌ Failed to update user status")
+            
+    except ValueError:
+        await update.message.reply_text("❌ Invalid user ID. Use numeric user ID.")
+    except Exception as e:
+        logger.error(f"Error in setpro command: {str(e)}")
+        await update.message.reply_text("❌ Error updating user status")
+
 def main() -> None:
     """Start the bot."""
+    # Initialize database
+    init_database()
+    
     # Create the Application and pass it your bot's token
     application = Application.builder().token(os.getenv('TELEGRAM_BOT_TOKEN')).build()
 
     # Add handlers
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("usage", usage_command))
+    application.add_handler(CommandHandler("setpro", setpro_command))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
     application.add_handler(CallbackQueryHandler(handle_transcription_callback, pattern="^transcribe_"))
 

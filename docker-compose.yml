@@ -1,0 +1,29 @@
+services:
+  voice-memo-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: voice-memo-bot-dev
+    restart: unless-stopped
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - ADMIN_USER_ID=${ADMIN_USER_ID}
+    volumes:
+      # Database persistence
+      - bot_data:/home/app/data
+      # Development: Mount source code for live reload (optional)
+      - ./bot.py:/home/app/bot.py:ro
+      - ./database.py:/home/app/database.py:ro
+      - ./prompts.py:/home/app/prompts.py:ro
+    env_file:
+      - .env
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  bot_data:
+    driver: local
