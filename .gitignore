@@ -8,6 +8,12 @@ env/
 build/
 develop-eggs/
 dist/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+bot_users.db
 downloads/
 eggs/
 .eggs/
