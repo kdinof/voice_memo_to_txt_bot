@@ -11,7 +11,7 @@ import ffmpeg
 import json
 import asyncio
 from prompts import BASIC_PROMPT, SUMMARY_PROMPT, TRANSLATE_PROMPT, SYSTEM_PROMPTS, MODEL_CONFIG
-from database import init_database, can_process_voice, add_usage, get_user_stats, set_pro_status
+from database import init_database, can_process_voice, add_usage, get_user_stats, set_pro_status, get_all_users_stats, get_top_users_by_usage, get_daily_stats, get_user_details, export_usage_data
 
 # Load environment variables
 load_dotenv()
@@ -85,6 +85,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         message += f"📊 Daily limit: 5 minutes (you have {remaining_minutes}m {remaining_secs}s remaining today)\n"
     
     message += "\nCommands:\n/usage - Check your usage statistics\n"
+    
+    # Add admin commands info for admin users
+    admin_id = os.getenv('ADMIN_USER_ID')
+    if admin_id and str(user_id) == admin_id:
+        message += "\n🔧 **Admin Commands:**\n"
+        message += "/allusers - View all users statistics\n"
+        message += "/topusers [limit] - Show top users by usage\n"
+        message += "/userinfo <user_id> - Get detailed user info\n"
+        message += "/dailystats - Today's usage statistics\n"
+        message += "/export_usage - Export all usage data as CSV\n"
+        message += "/setpro <user_id> <true/false> - Set PRO status\n"
     
     await update.message.reply_text(message, parse_mode='Markdown')
 
@@ -378,6 +389,171 @@ async def setpro_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         logger.error(f"Error in setpro command: {str(e)}")
         await update.message.reply_text("❌ Error updating user status")
 
+async def allusers_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Admin command to show all users statistics."""
+    admin_id = os.getenv('ADMIN_USER_ID')
+    if not admin_id or str(update.effective_user.id) != admin_id:
+        await update.message.reply_text("❌ Admin access required.")
+        return
+    
+    try:
+        total_users, pro_users = get_all_users_stats()
+        regular_users = total_users - pro_users
+        
+        message = f"👥 **All Users Statistics**\n\n"
+        message += f"Total Users: {total_users}\n"
+        message += f"PRO Users: {pro_users} ✨\n"
+        message += f"Regular Users: {regular_users}\n"
+        
+        if total_users > 0:
+            pro_percentage = (pro_users / total_users) * 100
+            message += f"PRO Rate: {pro_percentage:.1f}%"
+        
+        await update.message.reply_text(message, parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in allusers command: {str(e)}")
+        await update.message.reply_text("❌ Error retrieving user statistics")
+
+async def topusers_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Admin command to show top users by usage."""
+    admin_id = os.getenv('ADMIN_USER_ID')
+    if not admin_id or str(update.effective_user.id) != admin_id:
+        await update.message.reply_text("❌ Admin access required.")
+        return
+    
+    try:
+        limit = 10
+        if context.args and context.args[0].isdigit():
+            limit = min(int(context.args[0]), 50)  # Max 50 users
+        
+        top_users = get_top_users_by_usage(limit)
+        
+        if not top_users:
+            await update.message.reply_text("📊 No users found")
+            return
+        
+        message = f"📊 **Top {len(top_users)} Users by Usage**\n\n"
+        
+        for i, (user_id, total_seconds, is_pro) in enumerate(top_users, 1):
+            total_minutes = total_seconds // 60
+            remaining_seconds = total_seconds % 60
+            status = "PRO ✨" if is_pro else "Regular"
+            
+            message += f"{i}. User {user_id} ({status})\n"
+            message += f"   Usage: {total_minutes}m {remaining_seconds}s\n\n"
+        
+        await update.message.reply_text(message, parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in topusers command: {str(e)}")
+        await update.message.reply_text("❌ Error retrieving top users")
+
+async def userinfo_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Admin command to get detailed user information."""
+    admin_id = os.getenv('ADMIN_USER_ID')
+    if not admin_id or str(update.effective_user.id) != admin_id:
+        await update.message.reply_text("❌ Admin access required.")
+        return
+    
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: /userinfo <user_id>\n"
+            "Example: /userinfo 123456789"
+        )
+        return
+    
+    try:
+        target_user_id = int(context.args[0])
+        user_details = get_user_details(target_user_id)
+        
+        if not user_details:
+            await update.message.reply_text(f"❌ User {target_user_id} not found")
+            return
+        
+        # Format user information
+        status = "PRO ✨" if user_details['is_pro'] else "Regular"
+        daily_minutes = user_details['daily_usage'] // 60
+        daily_seconds = user_details['daily_usage'] % 60
+        total_minutes = user_details['total_usage'] // 60
+        
+        message = f"👤 **User Information**\n\n"
+        message += f"User ID: {user_details['user_id']}\n"
+        message += f"Status: {status}\n"
+        message += f"Joined: {user_details['created_at']}\n"
+        message += f"Today's Usage: {daily_minutes}m {daily_seconds}s\n"
+        message += f"Total Usage: {total_minutes}m\n\n"
+        
+        if user_details['usage_history']:
+            message += "📅 **Recent Usage History:**\n"
+            for date, seconds in user_details['usage_history']:
+                minutes = seconds // 60
+                remaining_secs = seconds % 60
+                message += f"• {date}: {minutes}m {remaining_secs}s\n"
+        else:
+            message += "📅 No usage history found\n"
+        
+        await update.message.reply_text(message, parse_mode='Markdown')
+        
+    except ValueError:
+        await update.message.reply_text("❌ Invalid user ID. Use numeric user ID.")
+    except Exception as e:
+        logger.error(f"Error in userinfo command: {str(e)}")
+        await update.message.reply_text("❌ Error retrieving user information")
+
+async def dailystats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Admin command to show daily statistics."""
+    admin_id = os.getenv('ADMIN_USER_ID')
+    if not admin_id or str(update.effective_user.id) != admin_id:
+        await update.message.reply_text("❌ Admin access required.")
+        return
+    
+    try:
+        active_users, total_seconds, total_transcriptions = get_daily_stats()
+        total_minutes = total_seconds // 60
+        remaining_seconds = total_seconds % 60
+        
+        message = f"📈 **Today's Statistics**\n\n"
+        message += f"Active Users: {active_users}\n"
+        message += f"Total Usage: {total_minutes}m {remaining_seconds}s\n"
+        message += f"Transcriptions: {total_transcriptions}\n"
+        
+        if active_users > 0:
+            avg_seconds_per_user = total_seconds // active_users
+            avg_minutes = avg_seconds_per_user // 60
+            avg_secs = avg_seconds_per_user % 60
+            message += f"Avg per User: {avg_minutes}m {avg_secs}s"
+        
+        await update.message.reply_text(message, parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in dailystats command: {str(e)}")
+        await update.message.reply_text("❌ Error retrieving daily statistics")
+
+async def export_usage_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Admin command to export usage data as CSV."""
+    admin_id = os.getenv('ADMIN_USER_ID')
+    if not admin_id or str(update.effective_user.id) != admin_id:
+        await update.message.reply_text("❌ Admin access required.")
+        return
+    
+    try:
+        await update.message.reply_text("📊 Generating usage data export...")
+        
+        csv_data = export_usage_data()
+        
+        if csv_data == "Error exporting data":
+            await update.message.reply_text("❌ Error exporting usage data")
+            return
+        
+        # Send CSV data as a code block for easy copying
+        await update.message.reply_text(f"```csv\n{csv_data}\n```", parse_mode='Markdown')
+        await update.message.reply_text("✅ Usage data exported successfully. Copy the CSV content above.")
+        
+    except Exception as e:
+        logger.error(f"Error in export_usage command: {str(e)}")
+        await update.message.reply_text("❌ Error exporting usage data")
+
 def main() -> None:
     """Start the bot."""
     # Initialize database
@@ -390,6 +566,11 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("usage", usage_command))
     application.add_handler(CommandHandler("setpro", setpro_command))
+    application.add_handler(CommandHandler("allusers", allusers_command))
+    application.add_handler(CommandHandler("topusers", topusers_command))
+    application.add_handler(CommandHandler("userinfo", userinfo_command))
+    application.add_handler(CommandHandler("dailystats", dailystats_command))
+    application.add_handler(CommandHandler("export_usage", export_usage_command))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
     application.add_handler(CallbackQueryHandler(handle_transcription_callback, pattern="^transcribe_"))
 
