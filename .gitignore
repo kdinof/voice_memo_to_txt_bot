@@ -52,4 +52,8 @@ Thumbs.db
 
 # Temporary files
 *.tmp
-*.temp 
+*.temp
+
+# Local Docker management scripts (keep local only)
+docker-manager.sh
+bot 
